@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { X } from 'lucide-react';
+import { X, Upload } from 'lucide-react';
 
 interface WriteModalProps {
     mainTab: 'TRADE' | 'BOARD';
@@ -13,28 +13,19 @@ interface WriteModalProps {
     itemSearchQuery: string;
     filteredItemDB: any[];
     isDarkMode: boolean;
+    isUploadingImage: boolean;
     onClose: () => void;
     onItemSearchChange: (q: string) => void;
     onSelectItemFromDB: (item: any) => void;
     onCreateTradePost: (e: React.FormEvent) => void;
     onCreateBoardPost: (e: React.FormEvent) => void;
+    onBoardImageUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
 export default function WriteModal({
-    mainTab,
-    setMainTab,
-    newTradePost,
-    setNewTradePost,
-    newBoardPost,
-    setNewBoardPost,
-    itemSearchQuery,
-    filteredItemDB,
-    isDarkMode,
-    onClose,
-    onItemSearchChange,
-    onSelectItemFromDB,
-    onCreateTradePost,
-    onCreateBoardPost,
+    mainTab, setMainTab, newTradePost, setNewTradePost, newBoardPost, setNewBoardPost,
+    itemSearchQuery, filteredItemDB, isDarkMode, isUploadingImage, onClose,
+    onItemSearchChange, onSelectItemFromDB, onCreateTradePost, onCreateBoardPost, onBoardImageUpload
 }: WriteModalProps) {
     return (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
@@ -42,12 +33,8 @@ export default function WriteModal({
                 <button onClick={onClose} className="absolute right-5 top-5 text-slate-400"><X className="w-6 h-6" /></button>
 
                 <div className="flex gap-2 border-b border-slate-700/80 pb-3">
-                    <button onClick={() => setMainTab('TRADE')} className={`text-xs md:text-sm font-bold px-3.5 py-2 rounded-xl ${mainTab === 'TRADE' ? 'bg-amber-500 text-slate-950' : 'text-slate-400'}`}>
-                        거래글 작성
-                    </button>
-                    <button onClick={() => setMainTab('BOARD')} className={`text-xs md:text-sm font-bold px-3.5 py-2 rounded-xl ${mainTab === 'BOARD' ? 'bg-amber-500 text-slate-950' : 'text-slate-400'}`}>
-                        자유게시판 글 작성
-                    </button>
+                    <button onClick={() => setMainTab('TRADE')} className={`text-xs md:text-sm font-bold px-3.5 py-2 rounded-xl ${mainTab === 'TRADE' ? 'bg-amber-500 text-slate-950' : 'text-slate-400'}`}>거래글 작성</button>
+                    <button onClick={() => setMainTab('BOARD')} className={`text-xs md:text-sm font-bold px-3.5 py-2 rounded-xl ${mainTab === 'BOARD' ? 'bg-amber-500 text-slate-950' : 'text-slate-400'}`}>자유게시판 글 작성</button>
                 </div>
 
                 {mainTab === 'TRADE' ? (
@@ -65,19 +52,11 @@ export default function WriteModal({
 
                         <div className="relative">
                             <label className="block text-amber-400 font-bold mb-1">📦 아이템 DB 검색</label>
-                            <input
-                                type="text"
-                                placeholder="아이템 이름 검색..."
-                                value={itemSearchQuery}
-                                onChange={(e) => onItemSearchChange(e.target.value)}
-                                className="w-full border rounded-xl p-3 bg-slate-900 border-amber-500/50 text-amber-300 focus:outline-none"
-                            />
+                            <input type="text" placeholder="아이템 이름 검색..." value={itemSearchQuery} onChange={(e) => onItemSearchChange(e.target.value)} className="w-full border rounded-xl p-3 bg-slate-900 border-amber-500/50 text-amber-300 focus:outline-none" />
                             {filteredItemDB.length > 0 && (
                                 <div className="absolute left-0 right-0 top-full mt-1 bg-slate-900 border border-amber-500/50 rounded-2xl shadow-2xl z-50 max-h-48 overflow-y-auto divide-y divide-slate-800">
                                     {filteredItemDB.map((item) => (
-                                        <div key={item.id} onClick={() => onSelectItemFromDB(item)} className="p-3 hover:bg-slate-800 cursor-pointer flex items-center justify-between">
-                                            <span className="font-bold text-slate-200">{item.icon} {item.name}</span>
-                                        </div>
+                                        <div key={item.id} onClick={() => onSelectItemFromDB(item)} className="p-3 hover:bg-slate-800 cursor-pointer flex items-center justify-between"><span className="font-bold text-slate-200">{item.icon} {item.name}</span></div>
                                     ))}
                                 </div>
                             )}
@@ -119,8 +98,26 @@ export default function WriteModal({
                 ) : (
                     <form onSubmit={onCreateBoardPost} className="space-y-3.5 text-xs md:text-sm">
                         <input type="text" required placeholder="글 제목" value={newBoardPost.title} onChange={(e) => setNewBoardPost({ ...newBoardPost, title: e.target.value })} className="w-full border rounded-xl p-3 bg-slate-900 border-slate-700 text-slate-100" />
+
+                        <div className="flex flex-col gap-2">
+                            <label className="w-full bg-slate-900 border border-slate-700 hover:border-amber-500/60 p-2.5 rounded-xl text-center font-bold cursor-pointer text-amber-400 flex items-center justify-center gap-2 transition">
+                                <Upload className="w-4 h-4" /> {newBoardPost.image_url ? '첨부 사진 변경' : '게시글에 사진 첨부 (선택)'}
+                                <input type="file" accept="image/*" onChange={onBoardImageUpload} className="hidden" />
+                            </label>
+                            {newBoardPost.image_url && (
+                                <div className="relative rounded-xl overflow-hidden border border-slate-700 max-h-48 w-full bg-slate-950 flex items-center justify-center">
+                                    <img src={newBoardPost.image_url} alt="첨부됨" className="max-h-48 w-auto object-contain" />
+                                    <button type="button" onClick={() => setNewBoardPost({ ...newBoardPost, image_url: '' })} className="absolute top-2 right-2 bg-black/70 p-1.5 rounded-lg text-white hover:bg-black">
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
                         <textarea rows={5} required placeholder="내용을 입력하세요..." value={newBoardPost.content} onChange={(e) => setNewBoardPost({ ...newBoardPost, content: e.target.value })} className="w-full border rounded-xl p-3 bg-slate-900 border-slate-700 text-slate-100" />
-                        <button type="submit" className="w-full bg-amber-500 hover:bg-amber-400 font-extrabold py-3.5 rounded-2xl text-slate-950 text-sm md:text-base shadow-md transition-all">게시글 작성</button>
+                        <button type="submit" disabled={isUploadingImage} className="w-full bg-amber-500 hover:bg-amber-400 font-extrabold py-3.5 rounded-2xl text-slate-950 text-sm md:text-base shadow-md transition-all disabled:opacity-50">
+                            {isUploadingImage ? '사진 업로드 중...' : '게시글 작성'}
+                        </button>
                     </form>
                 )}
             </div>
