@@ -168,7 +168,7 @@ export default function Home() {
           level: profile.level,
           avatar: profile.avatar
         });
-        setNewTradePost(prev => ({
+        setNewTradePost((prev: any) => ({
           ...prev,
           character_name: profile.name,
           job: profile.job,
@@ -233,7 +233,7 @@ export default function Home() {
         avatar: editProfileForm.avatar
       };
       setUserProfile(updated);
-      setNewTradePost(prev => ({
+      setNewTradePost((prev: any) => ({
         ...prev,
         character_name: updated.name,
         job: updated.job,
@@ -291,7 +291,7 @@ export default function Home() {
 
     if (!error) {
       alert(`게시글 상태가 [${nextStatus === 'COMPLETED' ? '완료됨' : '거래가능'}]으로 변경되었습니다.`);
-      setSelectedPostDetail(prev => prev ? { ...prev, status: nextStatus } : null);
+      setSelectedPostDetail((prev: any) => (prev ? { ...prev, status: nextStatus } : null));
       fetchAllData();
     }
   };
@@ -353,7 +353,7 @@ export default function Home() {
       text: newCommentInput,
       time: '방금 전'
     };
-    setCommentsMap(prev => ({
+    setCommentsMap((prev: any) => ({
       ...prev,
       [postId]: [...(prev[postId] || []), commentObj]
     }));
@@ -370,7 +370,7 @@ export default function Home() {
   };
 
   const selectItemFromDB = (item: typeof MOCK_ITEM_DB[0]) => {
-    setNewTradePost(prev => ({
+    setNewTradePost((prev: any) => ({
       ...prev,
       itemName: item.name,
       itemIcon: item.icon,
@@ -426,7 +426,7 @@ export default function Home() {
     const messageText = inputMessage;
     setInputMessage('');
 
-    setChatMessages(prev => [...prev, { sender: 'me', text: messageText, time: timeStr }]);
+    setChatMessages((prev: any) => [...prev, { sender: 'me', text: messageText, time: timeStr }]);
 
     // Supabase DB에 채팅 기록 저장
     await supabase.from('chat_messages').insert([{
