@@ -4,11 +4,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import {
   Sparkles, ShoppingBag, Users, Swords, LogIn, LogOut,
-  Search, Plus, MessageSquare, ExternalLink, ShieldCheck,
-  X, Moon, Sun, Heart, Calculator, BookOpen, MapPin,
-  Trash2, TrendingUp, MessageCircle, ThumbsUp, ShieldAlert,
-  Send, Coins, CreditCard, ChevronLeft, Flame, MoreVertical, Paperclip,
-  UserCheck, Settings, CheckCircle2, AlertCircle
+  Search, Plus, MessageSquare, X, Moon, Sun, MapPin,
+  Trash2, ThumbsUp, Coins, CreditCard, ChevronLeft, Flame,
+  MoreVertical, Settings, MessageCircle, Store, Upload
 } from 'lucide-react';
 
 const TRADE_CATEGORIES = [
@@ -56,6 +54,11 @@ export default function Home() {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [selectedPostDetail, setSelectedPostDetail] = useState<any>(null);
 
+  // 🏪 개인상점 모달 상태
+  const [isUserStoreModalOpen, setIsUserStoreModalOpen] = useState(false);
+  const [selectedUserStore, setSelectedUserStore] = useState<{ id?: string; name: string; job: string; level: number; avatar: string } | null>(null);
+  const [storeCategoryFilter, setStoreCategoryFilter] = useState('ALL');
+
   // 프로필 수정 입력 상태
   const [editProfileForm, setEditProfileForm] = useState({
     name: '',
@@ -66,7 +69,7 @@ export default function Home() {
 
   // 댓글 기능 상태
   const [commentsMap, setCommentsMap] = useState<Record<string, Array<{ id: string; author: string; text: string; time: string }>>>({
-    'b1': [{ id: 'c1', author: '클래식고수', text: '좋은 가이드 감사합니다! 많은 도움 되었어요.', time: '10분 전' }]
+    'b1': [{ id: 'c1', author: '클래식고수', text: '좋은 정보 감사합니다!', time: '10분 전' }]
   });
   const [newCommentInput, setNewCommentInput] = useState('');
 
@@ -208,7 +211,7 @@ export default function Home() {
     };
   }, []);
 
-  // 👤 프로필 정보 수정 핸들러
+  // 👤 프로필 정보 수정
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userProfile) return;
@@ -223,7 +226,7 @@ export default function Home() {
     });
 
     if (error) {
-      alert('프로필 수정 중 에러가 발생했습니다: ' + error.message);
+      alert('프로필 수정 중 에러: ' + error.message);
     } else {
       const updated = {
         ...userProfile,
@@ -239,15 +242,48 @@ export default function Home() {
         job: updated.job,
         level: updated.level
       }));
-      alert('프로필 정보가 성공적으로 변경되었습니다!');
+      alert('프로필이 성공적으로 변경되었습니다!');
       setIsProfileModalOpen(false);
     }
+  };
+
+  // 🖼️ 프로필 이미지 파일 업로드 핸들러
+  const handleAvatarFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      alert('이미지 용량은 2MB 이하로 업로드해주세요.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (uploadEvent) => {
+      const result = uploadEvent.target?.result as string;
+      if (result) {
+        setEditProfileForm((prev: any) => ({ ...prev, avatar: result }));
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setIsLoggedIn(false);
     setUserProfile(null);
+  };
+
+  // 🏬 개인 상점 열기
+  const openUserStore = (post: any) => {
+    setSelectedUserStore({
+      id: post.user_id,
+      name: post.character_name || '모험가',
+      job: post.job || '기타',
+      level: post.level || 1,
+      avatar: post.user_avatar || '🍁'
+    });
+    setStoreCategoryFilter('ALL');
+    setIsUserStoreModalOpen(true);
   };
 
   // Supabase 거래글 작성
@@ -270,7 +306,8 @@ export default function Home() {
       content: newTradePost.content,
       is_safe_trade: true,
       status: 'RECRUITING',
-      user_id: userProfile?.id
+      user_id: userProfile?.id,
+      user_avatar: userProfile?.avatar
     };
 
     const { error } = await supabase.from('trade_posts').insert([postPayload]);
@@ -278,7 +315,7 @@ export default function Home() {
     if (error) {
       alert('글 등록 실패: ' + error.message);
     } else {
-      alert('거래 글이 성공적으로 등록되었습니다!');
+      alert('거래 글이 등록되었습니다!');
       setIsWriteModalOpen(false);
       fetchAllData();
     }
@@ -332,7 +369,6 @@ export default function Home() {
     }
   };
 
-  // 추천(좋아요) 반영
   const handleLikeBoardPost = async (id: string, currentLikes: number) => {
     const { error } = await supabase
       .from('board_posts')
@@ -344,7 +380,6 @@ export default function Home() {
     }
   };
 
-  // 댓글 추가
   const handleAddComment = (postId: string) => {
     if (!newCommentInput.trim()) return;
     const commentObj = {
@@ -381,7 +416,7 @@ export default function Home() {
     setFilteredItemDB([]);
   };
 
-  // 1:1 라이브 챗 DB 불러오기 & 열기
+  // 1:1 라이브 챗
   const fetchChatMessages = async (postId: string) => {
     const { data: msgs, error } = await supabase
       .from('chat_messages')
@@ -400,8 +435,8 @@ export default function Home() {
       setChatMessages(formatted);
     } else {
       setChatMessages([
-        { sender: 'system', text: `[${activeChatTarget?.title || '거래글'}] 안전 중계 1:1 대화방이 열렸습니다. (수수료 5%)`, time: '방금 전' },
-        { sender: 'other', text: '안녕하세요! 구매/문의 희망합니다. 5% 에스크로 중개 보증으로 안전 거래 부탁드립니다.', time: '방금 전' }
+        { sender: 'system', text: `[${activeChatTarget?.title || '거래글'}] 1:1 라이브 대화방`, time: '방금 전' },
+        { sender: 'other', text: '안녕하세요! 구매 및 거래 문의드립니다.', time: '방금 전' }
       ]);
     }
   };
@@ -428,7 +463,6 @@ export default function Home() {
 
     setChatMessages((prev: any) => [...prev, { sender: 'me', text: messageText, time: timeStr }]);
 
-    // Supabase DB에 채팅 기록 저장
     await supabase.from('chat_messages').insert([{
       trade_post_id: activeChatTarget.id,
       sender_name: userProfile?.name || '익명',
@@ -449,6 +483,13 @@ export default function Home() {
       (post.item_name || '').includes(searchTerm) ||
       (post.character_name || '').includes(searchTerm);
     return matchesCategory && matchesSearch;
+  });
+
+  // 선택된 유저의 개인상점 거래글 목록
+  const selectedUserTradePosts = tradePosts.filter(post => {
+    const isOwner = selectedUserStore?.id ? post.user_id === selectedUserStore.id : post.character_name === selectedUserStore?.name;
+    const matchesCategory = storeCategoryFilter === 'ALL' || post.category === storeCategoryFilter;
+    return isOwner && matchesCategory;
   });
 
   const sortedBoardPosts = [...boardPosts].sort((a, b) => {
@@ -480,6 +521,13 @@ export default function Home() {
     );
   };
 
+  const renderAvatar = (avatarSrc: string) => {
+    if (avatarSrc && (avatarSrc.startsWith('http') || avatarSrc.startsWith('data:image'))) {
+      return <img src={avatarSrc} alt="Avatar" className="w-full h-full object-cover rounded-2xl" />;
+    }
+    return <span>{avatarSrc || '🍁'}</span>;
+  };
+
   return (
     <div className={`min-h-screen font-sans transition-colors duration-200 ${isDarkMode ? 'bg-[#1a1d24] text-slate-100' : 'bg-[#f1f3f7] text-slate-900'
       }`}>
@@ -504,14 +552,14 @@ export default function Home() {
                 className={`px-4 py-2.5 rounded-xl text-sm md:text-base font-bold transition-all ${mainTab === 'TRADE' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-slate-200'
                   }`}
               >
-                🤝 삽니다 & 팝니다 거래 센터
+                거래 센터
               </button>
               <button
                 onClick={() => setMainTab('BOARD')}
                 className={`px-4 py-2.5 rounded-xl text-sm md:text-base font-bold transition-all ${mainTab === 'BOARD' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-slate-200'
                   }`}
               >
-                🔥 유저 추천 자유게시판
+                자유게시판
               </button>
             </nav>
           </div>
@@ -538,14 +586,12 @@ export default function Home() {
             {isLoggedIn ? (
               <div
                 onClick={() => setIsProfileModalOpen(true)}
-                className={`flex items-center gap-2.5 px-4 py-2 rounded-2xl border text-sm md:text-base cursor-pointer transition-all hover:border-amber-500/80 ${isDarkMode ? 'bg-[#2a2f3d] border-slate-600' : 'bg-slate-200/80 border-slate-300'
+                className={`flex items-center gap-2.5 px-3.5 py-2 rounded-2xl border text-sm md:text-base cursor-pointer transition-all hover:border-amber-500/80 ${isDarkMode ? 'bg-[#2a2f3d] border-slate-600' : 'bg-slate-200/80 border-slate-300'
                   }`}
               >
-                {userProfile?.avatar?.startsWith('http') ? (
-                  <img src={userProfile.avatar} alt="Avatar" className="w-5 h-5 rounded-full" />
-                ) : (
-                  <span className="text-lg">{userProfile?.avatar}</span>
-                )}
+                <div className="w-7 h-7 overflow-hidden rounded-xl bg-amber-500/20 flex items-center justify-center shrink-0 text-sm">
+                  {renderAvatar(userProfile?.avatar || '🍁')}
+                </div>
                 <div className="flex flex-col text-left">
                   <span className="font-bold text-xs md:text-sm leading-tight">{userProfile?.name}</span>
                   <span className="text-[10px] text-amber-400 font-semibold">Lv.{userProfile?.level} {userProfile?.job}</span>
@@ -568,28 +614,28 @@ export default function Home() {
       {/* 2. 메인 컨텐츠 */}
       <main className="max-w-6xl mx-auto px-4 py-8 space-y-6">
 
-        {/* 🛡️ 5% 수수료 모두플래닛 안심 에스크로 배너 */}
+        {/* 안심 배너 */}
         <div className={`rounded-3xl p-5 border flex flex-col md:flex-row justify-between items-center gap-4 transition-all ${isDarkMode
-            ? 'bg-gradient-to-r from-amber-500/15 via-emerald-500/10 to-[#222631] border-amber-500/40'
-            : 'bg-gradient-to-r from-amber-100/80 via-emerald-50/80 to-white border-amber-300 shadow-sm'
+          ? 'bg-gradient-to-r from-amber-500/15 via-emerald-500/10 to-[#222631] border-amber-500/40'
+          : 'bg-gradient-to-r from-amber-100/80 via-emerald-50/80 to-white border-amber-300 shadow-sm'
           }`}>
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0 text-amber-400 text-2xl font-bold">
+          <div className="flex items-center gap-4">
+            <div className="w-11 h-11 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0 text-amber-400 text-xl font-bold">
               🛡️
             </div>
-            <div className="space-y-1">
-              <div className="flex items-center gap-2.5">
-                <span className="bg-amber-500 text-slate-950 font-black text-xs px-2.5 py-1 rounded-lg">중개 수수료 5%</span>
-                <h2 className="text-base md:text-lg font-extrabold text-amber-400">모두플래닛 안전거래 에스크로 시스템</h2>
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <span className="bg-amber-500 text-slate-950 font-black text-xs px-2 py-0.5 rounded-lg">중개 수수료 5%</span>
+                <h2 className="text-base md:text-lg font-extrabold text-amber-400">모두플래닛 안전거래 보증 시스템</h2>
               </div>
-              <p className={`text-sm md:text-base leading-relaxed ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
-                먹튀 사기 걱정 없는 1:1 보증 거래! 안전거래 진행 시 소정의 **중개 수수료 5%**가 적용됩니다.
+              <p className={`text-xs md:text-sm ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                먹튀 사기 걱정 없는 1:1 중개 거래! 거래 상대방의 프로필 사진을 클릭하면 **개인 상점**을 확인할 수 있습니다.
               </p>
             </div>
           </div>
         </div>
 
-        {/* TAB 1: 거래 & 매칭 센터 */}
+        {/* TAB 1: 거래 Center */}
         {mainTab === 'TRADE' && (
           <>
             <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
@@ -601,8 +647,8 @@ export default function Home() {
                     key={cat.id}
                     onClick={() => setActiveCategory(cat.id)}
                     className={`flex items-center gap-2 px-5 py-3 rounded-2xl text-sm md:text-base font-bold transition-all whitespace-nowrap border ${isActive
-                        ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md scale-105'
-                        : isDarkMode ? 'bg-[#222631] text-slate-300 border-slate-700/80 hover:border-slate-500' : 'bg-white text-slate-700 border-slate-300 hover:border-slate-400 shadow-sm'
+                      ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md scale-105'
+                      : isDarkMode ? 'bg-[#222631] text-slate-300 border-slate-700/80 hover:border-slate-500' : 'bg-white text-slate-700 border-slate-300 hover:border-slate-400 shadow-sm'
                       }`}
                   >
                     <Icon className={`w-5 h-5 ${isActive ? 'text-slate-950' : 'text-slate-400'}`} />
@@ -617,7 +663,7 @@ export default function Home() {
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
               <input
                 type="text"
-                placeholder="아이템명(노목, 뇌전, 혼주), 사냥터, 캐릭터명 검색..."
+                placeholder="아이템명, 사냥터, 캐릭터명 검색..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className={`w-full border rounded-2xl pl-12 pr-4 py-3.5 text-sm md:text-base focus:outline-none focus:border-amber-500 font-medium ${isDarkMode ? 'bg-[#222631] border-slate-700 text-slate-100 placeholder-slate-400' : 'bg-white border-slate-300 text-slate-900 shadow-sm'
@@ -647,9 +693,6 @@ export default function Home() {
                           <span className={`px-2.5 py-1 rounded-lg font-bold border ${catObj?.badgeColor}`}>
                             {catObj?.label}
                           </span>
-                          <span className="bg-amber-500/10 text-amber-400 border border-amber-500/30 font-bold px-2.5 py-1 rounded-lg">
-                            🛡️ 수수료 5% 에스크로
-                          </span>
                         </div>
 
                         <div className="flex items-center gap-2.5 flex-wrap">
@@ -666,10 +709,22 @@ export default function Home() {
                         </div>
 
                         <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs md:text-sm text-slate-400">
-                          <span className="flex items-center gap-1.5">
-                            <span className="text-base">{jobIcon}</span>
-                            <strong className={isDarkMode ? 'text-slate-200' : 'text-slate-800'}>{post.character_name}</strong> (Lv.{post.level} {post.job})
-                          </span>
+                          {/* 🏬 유저 개인상점 보기 버튼 */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openUserStore(post);
+                            }}
+                            className="flex items-center gap-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2.5 py-1 rounded-xl transition-all"
+                          >
+                            <div className="w-5 h-5 overflow-hidden rounded-lg bg-amber-500/20 flex items-center justify-center text-xs">
+                              {renderAvatar(post.user_avatar || '🍁')}
+                            </div>
+                            <strong className="text-slate-200">{post.character_name}</strong>
+                            <span className="text-[11px] text-amber-400/80">(Lv.{post.level} {post.job})</span>
+                            <Store className="w-3.5 h-3.5 ml-0.5 text-amber-400" />
+                          </button>
+
                           <span>📍 {post.location_or_boss}</span>
                           <span>{renderPriceTag(post)}</span>
                         </div>
@@ -692,7 +747,7 @@ export default function Home() {
               ) : (
                 <div className={`text-center py-20 rounded-2xl border ${isDarkMode ? 'bg-[#222631] border-slate-700/70' : 'bg-white border-slate-200'}`}>
                   <p className="text-slate-400 font-bold text-base md:text-lg">
-                    {isLoading ? 'Supabase 데이터를 로딩 중입니다...' : '등록된 거래글이 없습니다.'}
+                    {isLoading ? '데이터를 로딩 중입니다...' : '등록된 거래글이 없습니다.'}
                   </p>
                 </div>
               )}
@@ -700,12 +755,12 @@ export default function Home() {
           </>
         )}
 
-        {/* TAB 2: 🔥 유저 자유 추천 게시판 */}
+        {/* TAB 2: 자유 게시판 */}
         {mainTab === 'BOARD' && (
           <div className="space-y-5">
             <div className={`flex justify-between items-center p-4 rounded-2xl border ${isDarkMode ? 'bg-[#222631] border-slate-700/70' : 'bg-white border-slate-200 shadow-sm'}`}>
               <span className="text-sm md:text-base font-extrabold text-amber-400 flex items-center gap-2">
-                <Flame className="w-5 h-5 fill-amber-400" /> 자유롭게 소통하고 추천하는 자유게시판
+                <Flame className="w-5 h-5 fill-amber-400" /> 자유게시판
               </span>
               <div className="flex gap-2 text-xs md:text-sm">
                 <button
@@ -734,7 +789,7 @@ export default function Home() {
                         <div className="flex items-center gap-2 flex-wrap">
                           {(post.likes || 0) >= 5 && (
                             <span className="bg-rose-500/10 text-rose-400 border border-rose-500/30 text-xs font-bold px-2.5 py-0.5 rounded-lg flex items-center gap-1">
-                              <Flame className="w-3.5 h-3.5 fill-rose-400" /> 베스트 인기글
+                              <Flame className="w-3.5 h-3.5 fill-rose-400" /> 인기글
                             </span>
                           )}
                           <h3 className="font-bold text-base md:text-lg text-slate-100">{post.title}</h3>
@@ -758,7 +813,6 @@ export default function Home() {
                       </span>
                     </div>
 
-                    {/* 댓글 영역 */}
                     <div className="bg-slate-900/60 rounded-xl p-3.5 space-y-3 border border-slate-800/80">
                       {postComments.map(c => (
                         <div key={c.id} className="flex justify-between items-center text-xs md:text-sm border-b border-slate-800 pb-2 last:border-b-0 last:pb-0">
@@ -796,26 +850,120 @@ export default function Home() {
 
       {/* 3. 모달 레이어 */}
 
-      {/* 👤 3-1. 프로필 수정 모달 */}
+      {/* 🏬 3-1. 유저 개인 상점 모달 */}
+      {isUserStoreModalOpen && selectedUserStore && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className={`border rounded-3xl p-6 max-w-2xl w-full space-y-5 relative shadow-2xl max-h-[85vh] overflow-y-auto ${isDarkMode ? 'bg-[#222631] border-slate-700' : 'bg-white border-slate-200'}`}>
+            <button onClick={() => setIsUserStoreModalOpen(false)} className="absolute right-5 top-5 text-slate-400 hover:text-slate-200"><X className="w-6 h-6" /></button>
+
+            {/* 유저 상점 프로필 헤더 */}
+            <div className="flex items-center gap-4 border-b border-slate-700/80 pb-4">
+              <div className="w-16 h-16 overflow-hidden rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-3xl shrink-0">
+                {renderAvatar(selectedUserStore.avatar)}
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="bg-amber-500 text-slate-950 font-black text-[10px] px-2 py-0.5 rounded">개인상점</span>
+                  <h2 className="text-xl font-black text-amber-400">{selectedUserStore.name} 님의 상점</h2>
+                </div>
+                <p className="text-xs text-slate-400 font-semibold">
+                  Lv.{selectedUserStore.level} {selectedUserStore.job} | 등록한 글 총 {selectedUserTradePosts.length}개
+                </p>
+              </div>
+            </div>
+
+            {/* 개인상점 내 카테고리 필터 */}
+            <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+              {TRADE_CATEGORIES.map(cat => (
+                <button
+                  key={cat.id}
+                  onClick={() => setStoreCategoryFilter(cat.id)}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-all ${storeCategoryFilter === cat.id
+                    ? 'bg-amber-500 text-slate-950 border-amber-400'
+                    : 'bg-slate-900/80 text-slate-400 border-slate-800'
+                    }`}
+                >
+                  {cat.label}
+                </button>
+              ))}
+            </div>
+
+            {/* 해당 유저의 거래 글 목록 */}
+            <div className="space-y-2.5">
+              {selectedUserTradePosts.length > 0 ? (
+                selectedUserTradePosts.map(post => (
+                  <div
+                    key={post.id}
+                    onClick={() => {
+                      setIsUserStoreModalOpen(false);
+                      setSelectedPostDetail(post);
+                      setIsDetailModalOpen(true);
+                    }}
+                    className="p-4 rounded-xl border border-slate-800 bg-slate-900/70 hover:border-amber-500/50 cursor-pointer flex justify-between items-center transition-all"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs bg-amber-500/20 text-amber-400 font-bold px-2 py-0.5 rounded">
+                          {TRADE_CATEGORIES.find(c => c.id === post.category)?.label}
+                        </span>
+                        <h4 className="font-bold text-sm text-slate-100">{post.title}</h4>
+                      </div>
+                      <div className="text-xs text-slate-400 flex gap-3">
+                        <span>📍 {post.location_or_boss}</span>
+                        <span>{renderPriceTag(post)}</span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsUserStoreModalOpen(false);
+                        openKakaoChat(post);
+                      }}
+                      className="bg-[#FEE500] hover:bg-[#FDD800] text-[#191919] font-bold px-3 py-1.5 rounded-xl text-xs shrink-0"
+                    >
+                      1:1 대화
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-12 text-slate-400 text-sm">
+                  이 사용자가 작성한 거래글이 없습니다.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 👤 3-2. 프로필 수정 모달 (사진 직접 업로드 지원) */}
       {isProfileModalOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className={`border rounded-3xl p-6 max-w-md w-full space-y-5 relative shadow-2xl ${isDarkMode ? 'bg-[#222631] border-slate-700' : 'bg-white border-slate-200'}`}>
             <button onClick={() => setIsProfileModalOpen(false)} className="absolute right-5 top-5 text-slate-400"><X className="w-6 h-6" /></button>
 
             <div className="flex items-center gap-3 border-b border-slate-700/80 pb-4">
-              <div className="w-12 h-12 bg-amber-500/20 border border-amber-500/40 rounded-2xl flex items-center justify-center text-2xl">
-                {editProfileForm.avatar}
+              <div className="w-14 h-14 overflow-hidden rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-2xl shrink-0">
+                {renderAvatar(editProfileForm.avatar)}
               </div>
               <div>
-                <h3 className="text-lg font-black text-amber-400">내 메이플 프로필 수정</h3>
-                <p className="text-xs text-slate-400">거래글 및 소통 시 표시되는 캐릭터 정보입니다.</p>
+                <h3 className="text-lg font-black text-amber-400">내 프로필 설정</h3>
+                <p className="text-xs text-slate-400">개인상점 및 거래 시 표시되는 커스텀 프로필입니다.</p>
               </div>
             </div>
 
             <form onSubmit={handleUpdateProfile} className="space-y-4 text-xs md:text-sm">
-              <div>
-                <label className="block text-slate-400 mb-1 font-bold">프로필 아바타 이모지</label>
-                <div className="flex gap-2 overflow-x-auto pb-1">
+              {/* 프로필 이미지 선택 및 파일 업로드 */}
+              <div className="space-y-2">
+                <label className="block text-slate-400 font-bold">프로필 사진 / 이모지 변경</label>
+
+                <div className="flex items-center gap-2">
+                  <label className="flex-1 bg-slate-900 border border-slate-700 hover:border-amber-500/60 p-2.5 rounded-xl text-center font-bold cursor-pointer text-amber-400 flex items-center justify-center gap-1.5">
+                    <Upload className="w-4 h-4" /> 내 컴퓨터 사진 업로드
+                    <input type="file" accept="image/*" onChange={handleAvatarFileUpload} className="hidden" />
+                  </label>
+                </div>
+
+                <div className="flex gap-2 overflow-x-auto pb-1 pt-1">
                   {AVATAR_OPTIONS.map(av => (
                     <button
                       type="button"
@@ -882,7 +1030,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 🟡 3-2. 1:1 라이브 대화방 UI */}
+      {/* 🟡 3-3. 1:1 라이브 대화방 UI */}
       {isChatModalOpen && activeChatTarget && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="w-full max-w-md h-[650px] bg-[#ABC1D1] rounded-3xl flex flex-col justify-between relative shadow-2xl overflow-hidden border border-slate-700">
@@ -933,7 +1081,6 @@ export default function Home() {
             </div>
 
             <div className="bg-white p-3 flex items-center gap-2 border-t border-black/5">
-              <Paperclip className="w-6 h-6 text-slate-400 cursor-pointer hover:text-slate-600" />
               <form onSubmit={handleSendChatMessage} className="flex-1 flex gap-2">
                 <input
                   type="text"
@@ -955,7 +1102,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 🔍 3-3. 상세보기 모달 */}
+      {/* 🔍 3-4. 상세보기 모달 */}
       {isDetailModalOpen && selectedPostDetail && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className={`border rounded-3xl p-6 max-w-lg w-full space-y-5 relative shadow-2xl ${isDarkMode ? 'bg-[#222631] border-slate-700' : 'bg-white border-slate-200'}`}>
@@ -966,7 +1113,7 @@ export default function Home() {
                 {TRADE_CATEGORIES.find(c => c.id === selectedPostDetail.category)?.label}
               </span>
               <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-3 py-1 rounded-lg font-bold">
-                🛡️ 수수료 5% 에스크로 보증
+                🛡️ 수수료 5% 에스크로
               </span>
             </div>
 
@@ -986,7 +1133,7 @@ export default function Home() {
 
                 {selectedPostDetail.equip_stats && (
                   <div className="pt-1 text-xs md:text-sm">
-                    <span className="text-amber-400 font-bold block mb-1">⚔️ 세부 능력치 / 옵션:</span>
+                    <span className="text-amber-400 font-bold block mb-1">⚔️ 옵션:</span>
                     <p className="text-slate-200 font-mono bg-slate-950/80 p-3 rounded-xl border border-slate-800 whitespace-pre-wrap leading-relaxed">
                       {selectedPostDetail.equip_stats}
                     </p>
@@ -998,7 +1145,16 @@ export default function Home() {
             <div className="grid grid-cols-2 gap-3 text-xs md:text-sm bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
               <div>
                 <span className="text-slate-400 block mb-1">판매자 / 직업</span>
-                <span className="font-bold text-slate-100">{selectedPostDetail.character_name} (Lv.{selectedPostDetail.level} {selectedPostDetail.job})</span>
+                <button
+                  onClick={() => {
+                    setIsDetailModalOpen(false);
+                    openUserStore(selectedPostDetail);
+                  }}
+                  className="font-bold text-amber-400 hover:underline flex items-center gap-1"
+                >
+                  {selectedPostDetail.character_name} (Lv.{selectedPostDetail.level} {selectedPostDetail.job})
+                  <Store className="w-3.5 h-3.5" />
+                </button>
               </div>
               <div>
                 <span className="text-slate-400 block mb-1">희망 가격</span>
@@ -1006,7 +1162,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* 작성자 본인 제어 버튼들 */}
+            {/* 작성자 본인 제어 버튼 */}
             {userProfile?.id && (selectedPostDetail.user_id === userProfile.id || selectedPostDetail.character_name === userProfile.name) && (
               <div className="flex gap-2 p-2 bg-slate-900/80 rounded-xl border border-slate-800 text-xs">
                 <button
@@ -1032,14 +1188,14 @@ export default function Home() {
                 }}
                 className="w-full bg-[#FEE500] hover:bg-[#FDD800] text-[#191919] font-black py-3.5 rounded-2xl flex items-center justify-center gap-2 text-xs md:text-sm shadow-md"
               >
-                <MessageSquare className="w-5 h-5 fill-current" /> 1:1 라이브 챗 시작하기 (수수료 5% 에스크로)
+                <MessageSquare className="w-5 h-5 fill-current" /> 1:1 라이브 챗 시작하기
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ✍️ 3-4. 새 글 작성 모달 */}
+      {/* ✍️ 3-5. 새 글 작성 모달 */}
       {isWriteModalOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className={`border rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl relative max-h-[90vh] overflow-y-auto ${isDarkMode ? 'bg-[#222631] border-slate-700' : 'bg-white border-slate-200'}`}>
@@ -1071,7 +1227,7 @@ export default function Home() {
                   <label className="block text-amber-400 font-bold mb-1">📦 아이템 DB 검색</label>
                   <input
                     type="text"
-                    placeholder="아이템 이름 검색 (노목, 뇌전, 혼돈)..."
+                    placeholder="아이템 이름 검색..."
                     value={itemSearchQuery}
                     onChange={(e) => handleItemSearchChange(e.target.value)}
                     className="w-full border rounded-xl p-3 bg-slate-900 border-amber-500/50 text-amber-300 focus:outline-none"
@@ -1089,7 +1245,7 @@ export default function Home() {
 
                 <div className="grid grid-cols-2 gap-2.5">
                   <input type="text" required placeholder="아이템명" value={newTradePost.itemName} onChange={(e) => setNewTradePost({ ...newTradePost, itemName: e.target.value })} className="w-full border rounded-xl p-3 bg-slate-900 border-slate-700 text-slate-100" />
-                  <input type="text" required placeholder="수량 (예: 1개, 3통)" value={newTradePost.quantity} onChange={(e) => setNewTradePost({ ...newTradePost, quantity: e.target.value })} className="w-full border rounded-xl p-3 bg-slate-900 border-slate-700 text-slate-100" />
+                  <input type="text" required placeholder="수량" value={newTradePost.quantity} onChange={(e) => setNewTradePost({ ...newTradePost, quantity: e.target.value })} className="w-full border rounded-xl p-3 bg-slate-900 border-slate-700 text-slate-100" />
                 </div>
 
                 <input type="text" placeholder="옵션 (예: 공8 / 업횟 0회)" value={newTradePost.equipStats} onChange={(e) => setNewTradePost({ ...newTradePost, equipStats: e.target.value })} className="w-full border rounded-xl p-3 bg-slate-900 border-slate-700 text-slate-100" />
@@ -1131,7 +1287,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 🎮 3-5. 디스코드 로그인 모달 */}
+      {/* 🎮 3-6. 디스코드 로그인 모달 */}
       {isLoginModalOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className={`border rounded-3xl p-7 max-w-sm w-full space-y-6 text-center relative shadow-2xl ${isDarkMode ? 'bg-[#222631] border-slate-700' : 'bg-white border-slate-200'}`}>
@@ -1139,7 +1295,7 @@ export default function Home() {
             <div className="w-14 h-14 bg-[#5865F2]/10 border border-[#5865F2]/30 rounded-2xl flex items-center justify-center mx-auto text-3xl">🍁</div>
             <div>
               <h3 className="text-xl font-black">모두플래닛 시작하기</h3>
-              <p className="text-xs md:text-sm text-slate-400 mt-1.5 leading-relaxed">로그인 후 1:1 라이브 챗과 안전 거래에 참여해보세요.</p>
+              <p className="text-xs md:text-sm text-slate-400 mt-1.5 leading-relaxed">로그인 후 1:1 라이브 챗과 개인상점 기능을 이용해 보세요.</p>
             </div>
             <button
               onClick={handleDiscordLogin}
