@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import {
   Sparkles, ShoppingBag, Users, Swords, LogIn, Search, Plus, MessageSquare, X,
-  Moon, Sun, MapPin, ThumbsUp, Coins, CreditCard, Flame, Settings, MessageCircle, Store, ChevronDown
+  Moon, Sun, MapPin, ThumbsUp, Coins, CreditCard, Flame, Settings, MessageCircle, Store, ChevronDown, Send
 } from 'lucide-react';
 
 import ProfileModal from '@/components/ProfileModal';
@@ -44,9 +44,9 @@ export default function Home() {
   const [activeCommentPostId, setActiveCommentPostId] = useState<string | null>(null);
   const [commentSortType, setCommentSortType] = useState<'latest' | 'likes'>('latest');
 
-  // 🔥 드롭다운 메뉴 상태 추가
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
+  // 모달 상태들
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isWriteModalOpen, setIsWriteModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -62,6 +62,13 @@ export default function Home() {
   const [chatMessages, setChatMessages] = useState<any[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const chatScrollRef = useRef<HTMLDivElement>(null);
+
+  // 🔥 글로벌(공용) 단체 채팅 상태
+  const [isGlobalChatOpen, setIsGlobalChatOpen] = useState(false);
+  const [globalChatMessages, setGlobalChatMessages] = useState<any[]>([]);
+  const [globalChatInput, setGlobalChatInput] = useState('');
+  const [anonymousId] = useState(() => Math.floor(Math.random() * 10000)); // 익명 유저용 랜덤 번호
+  const globalChatScrollRef = useRef<HTMLDivElement>(null);
 
   const [newTradePost, setNewTradePost] = useState({
     category: 'SELL', title: '', itemName: '', quantity: '1개',
@@ -85,7 +92,6 @@ export default function Home() {
   const fetchUserLikes = async (userId: string) => {
     const { data: postLikes } = await supabase.from('board_likes').select('post_id').eq('user_id', userId);
     if (postLikes) setLikedPosts(new Set(postLikes.map(l => l.post_id)));
-
     const { data: commentLikes } = await supabase.from('comment_likes').select('comment_id').eq('user_id', userId);
     if (commentLikes) setLikedComments(new Set(commentLikes.map(l => l.comment_id)));
   };
@@ -94,6 +100,35 @@ export default function Home() {
     const { data: comments } = await supabase.from('board_comments').select('*').eq('post_id', postId).order('created_at', { ascending: false });
     if (comments) setCommentsMap(prev => ({ ...prev, [postId]: comments }));
   };
+
+  // 🔥 글로벌 채팅 불러오기 및 실시간 구독
+  useEffect(() => {
+    const fetchGlobalChats = async () => {
+      const { data } = await supabase.from('global_chats').select('*').order('created_at', { ascending: true }).limit(50);
+      if (data) setGlobalChatMessages(data);
+      // 스크롤 맨 아래로
+      setTimeout(() => {
+        if (globalChatScrollRef.current) {
+          globalChatScrollRef.current.scrollTop = globalChatScrollRef.current.scrollHeight;
+        }
+      }, 100);
+    };
+
+    fetchGlobalChats();
+
+    // 실시간 채팅 구독
+    const chatSubscription = supabase.channel('public:global_chats')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'global_chats' }, (payload) => {
+        setGlobalChatMessages((prev) => [...prev, payload.new]);
+        setTimeout(() => {
+          if (globalChatScrollRef.current) {
+            globalChatScrollRef.current.scrollTop = globalChatScrollRef.current.scrollHeight;
+          }
+        }, 100);
+      }).subscribe();
+
+    return () => { supabase.removeChannel(chatSubscription); };
+  }, []);
 
   const loadUserProfile = async (userId: string) => {
     const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
@@ -130,13 +165,28 @@ export default function Home() {
     await supabase.auth.signInWithOAuth({ provider: 'discord', options: { redirectTo: `${window.location.origin}` } });
   };
 
-  // 🔥 내 상점(마이페이지) 열기 함수
   const openMyStore = () => {
     if (!userProfile) return;
     setSelectedUserStore({ id: userProfile.id, name: userProfile.name, avatar: userProfile.avatar, user_code: userProfile.user_code });
     setStoreCategoryFilter('ALL');
     setIsUserStoreModalOpen(true);
-    setIsDropdownOpen(false); // 드롭다운 닫기
+    setIsDropdownOpen(false);
+  };
+
+  // 🔥 공용 채팅 전송
+  const handleSendGlobalChat = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!globalChatInput.trim()) return;
+
+    const senderName = isLoggedIn ? `${userProfile?.name} ${userProfile?.user_code || ''}` : `익명_${anonymousId}`;
+    const msg = globalChatInput;
+    setGlobalChatInput('');
+
+    await supabase.from('global_chats').insert([{
+      sender_name: senderName,
+      message: msg,
+      user_id: userProfile?.id || null
+    }]);
   };
 
   const handleBoardImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -276,7 +326,7 @@ export default function Home() {
   };
 
   return (
-    <div className={`min-h-screen font-sans ${isDarkMode ? 'bg-[#1a1d24] text-slate-100' : 'bg-[#f1f3f7] text-slate-900'}`}>
+    <div className={`min-h-screen font-sans relative ${isDarkMode ? 'bg-[#1a1d24] text-slate-100' : 'bg-[#f1f3f7] text-slate-900'}`}>
       <header className={`sticky top-0 z-40 backdrop-blur-md border-b ${isDarkMode ? 'bg-[#222631]/90 border-slate-700/60' : 'bg-white/95 border-slate-300'}`}>
         <div className="max-w-6xl mx-auto px-4 h-20 flex items-center justify-between">
           <div className="flex items-center gap-8">
@@ -299,12 +349,9 @@ export default function Home() {
               <Plus className="w-5 h-5" /> 글쓰기
             </button>
 
-            {/* 🔥 프로필 드롭다운 영역 */}
             {isLoggedIn ? (
               <div className="relative">
-                {/* 바깥 영역 클릭 시 닫히도록 투명 배경 추가 */}
                 {isDropdownOpen && <div className="fixed inset-0 z-40" onClick={() => setIsDropdownOpen(false)}></div>}
-
                 <div onClick={() => setIsDropdownOpen(!isDropdownOpen)} className={`relative z-50 flex items-center gap-2.5 px-3.5 py-2 rounded-2xl border cursor-pointer hover:border-amber-500/50 transition-colors ${isDarkMode ? 'bg-[#2a2f3d] border-slate-600' : 'bg-slate-200 border-slate-300'}`}>
                   <div className="w-7 h-7 overflow-hidden rounded-xl bg-amber-500/20 flex items-center justify-center shrink-0 text-sm">{renderAvatar(userProfile?.avatar || '🍁')}</div>
                   <span className="font-bold text-sm hidden md:block">
@@ -313,12 +360,11 @@ export default function Home() {
                   <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isDropdownOpen ? 'rotate-180 text-amber-400' : ''}`} />
                 </div>
 
-                {/* 드롭다운 메뉴 내용 */}
                 {isDropdownOpen && (
                   <div className={`absolute right-0 mt-2 w-48 rounded-2xl shadow-xl z-50 overflow-hidden border animate-in fade-in slide-in-from-top-2 ${isDarkMode ? 'bg-[#222631] border-slate-700' : 'bg-white border-slate-200'}`}>
                     <div className="p-2 space-y-1">
                       <button onClick={openMyStore} className={`w-full text-left px-4 py-2.5 text-sm font-bold rounded-xl transition-colors ${isDarkMode ? 'hover:bg-amber-500 hover:text-slate-950 text-slate-200' : 'hover:bg-amber-500 hover:text-white text-slate-700'}`}>
-                        🏪 내 상점 (마이페이지)
+                        🏪 마이페이지
                       </button>
                       <button onClick={() => { setIsProfileModalOpen(true); setIsDropdownOpen(false); }} className={`w-full text-left px-4 py-2.5 text-sm font-bold rounded-xl transition-colors ${isDarkMode ? 'hover:bg-amber-500 hover:text-slate-950 text-slate-200' : 'hover:bg-amber-500 hover:text-white text-slate-700'}`}>
                         ⚙️ 회원정보 변경
@@ -485,6 +531,67 @@ export default function Home() {
           </div>
         )}
       </main>
+
+      {/* 🔥 플로팅 글로벌 단체 채팅방 */}
+      <div className="fixed bottom-6 right-6 z-50">
+        {!isGlobalChatOpen ? (
+          <button
+            onClick={() => setIsGlobalChatOpen(true)}
+            className="w-14 h-14 bg-amber-500 hover:bg-amber-400 rounded-full flex items-center justify-center shadow-2xl transition-transform hover:scale-110"
+          >
+            <MessageSquare className="w-6 h-6 text-slate-950 fill-current" />
+            <span className="absolute -top-1 -right-1 flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500 border-2 border-[#1a1d24]"></span>
+            </span>
+          </button>
+        ) : (
+          <div className={`w-80 md:w-96 h-[32rem] flex flex-col rounded-3xl shadow-2xl border animate-in slide-in-from-bottom-5 ${isDarkMode ? 'bg-[#222631] border-slate-700' : 'bg-white border-slate-300'}`}>
+            <div className={`p-4 border-b flex justify-between items-center rounded-t-3xl ${isDarkMode ? 'border-slate-700/80 bg-slate-900/50' : 'border-slate-200 bg-slate-50'}`}>
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-amber-500 flex items-center justify-center text-xl shadow-inner">🏕️</div>
+                <div>
+                  <h3 className="font-black text-sm md:text-base">플래닛 광장 챗</h3>
+                  <p className="text-[10px] text-slate-400">{isLoggedIn ? '로그인 됨' : `익명 접속 중`}</p>
+                </div>
+              </div>
+              <button onClick={() => setIsGlobalChatOpen(false)} className="text-slate-400 hover:text-slate-200 transition-colors p-1"><X className="w-5 h-5" /></button>
+            </div>
+
+            <div ref={globalChatScrollRef} className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar text-xs md:text-sm">
+              <div className="text-center my-2">
+                <span className="bg-slate-800/60 text-slate-400 px-3 py-1 rounded-full text-[10px] font-bold">광장 채팅방에 오신 것을 환영합니다!</span>
+              </div>
+              {globalChatMessages.map((msg, idx) => {
+                const isMe = msg.user_id === userProfile?.id || msg.sender_name === `익명_${anonymousId}`;
+                return (
+                  <div key={idx} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                    <span className="text-[10px] text-slate-400 mb-0.5 ml-1">{msg.sender_name}</span>
+                    <div className={`max-w-[85%] rounded-2xl px-3.5 py-2 break-words ${isMe ? 'bg-amber-500 text-slate-950 rounded-br-sm' : isDarkMode ? 'bg-slate-800 text-slate-100 rounded-bl-sm' : 'bg-slate-200 text-slate-900 rounded-bl-sm'}`}>
+                      {msg.message}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className={`p-3 border-t ${isDarkMode ? 'border-slate-700/80 bg-slate-900/50 rounded-b-3xl' : 'border-slate-200 bg-slate-50 rounded-b-3xl'}`}>
+              <form onSubmit={handleSendGlobalChat} className="flex gap-2">
+                <input
+                  type="text"
+                  value={globalChatInput}
+                  onChange={(e) => setGlobalChatInput(e.target.value)}
+                  placeholder="메시지를 입력하세요..."
+                  className={`flex-1 rounded-xl px-3 py-2 text-xs md:text-sm focus:outline-none focus:border-amber-500 border ${isDarkMode ? 'bg-slate-950 border-slate-700 text-slate-200' : 'bg-white border-slate-300 text-slate-900'}`}
+                />
+                <button type="submit" disabled={!globalChatInput.trim()} className="bg-amber-500 hover:bg-amber-400 disabled:bg-slate-700 text-slate-950 p-2.5 rounded-xl transition-colors">
+                  <Send className="w-4 h-4" />
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* 모달 영역 */}
       {isProfileModalOpen && userProfile && <ProfileModal userProfile={userProfile} isDarkMode={isDarkMode} onClose={() => setIsProfileModalOpen(false)} onSuccess={(updated) => setUserProfile((prev: any) => ({ ...prev, ...updated }))} />}
