@@ -63,11 +63,11 @@ export default function Home() {
   const [inputMessage, setInputMessage] = useState('');
   const chatScrollRef = useRef<HTMLDivElement>(null);
 
-  // 🔥 글로벌(공용) 단체 채팅 상태
+  // 글로벌(공용) 단체 채팅 상태
   const [isGlobalChatOpen, setIsGlobalChatOpen] = useState(false);
   const [globalChatMessages, setGlobalChatMessages] = useState<any[]>([]);
   const [globalChatInput, setGlobalChatInput] = useState('');
-  const [anonymousId] = useState(() => Math.floor(Math.random() * 10000)); // 익명 유저용 랜덤 번호
+  const [anonymousId] = useState(() => Math.floor(1000 + Math.random() * 9000));
   const globalChatScrollRef = useRef<HTMLDivElement>(null);
 
   const [newTradePost, setNewTradePost] = useState({
@@ -101,12 +101,11 @@ export default function Home() {
     if (comments) setCommentsMap(prev => ({ ...prev, [postId]: comments }));
   };
 
-  // 🔥 글로벌 채팅 불러오기 및 실시간 구독
+  // 🔥 채팅 실시간 렌더링 및 구독
   useEffect(() => {
     const fetchGlobalChats = async () => {
       const { data } = await supabase.from('global_chats').select('*').order('created_at', { ascending: true }).limit(50);
       if (data) setGlobalChatMessages(data);
-      // 스크롤 맨 아래로
       setTimeout(() => {
         if (globalChatScrollRef.current) {
           globalChatScrollRef.current.scrollTop = globalChatScrollRef.current.scrollHeight;
@@ -116,7 +115,6 @@ export default function Home() {
 
     fetchGlobalChats();
 
-    // 실시간 채팅 구독
     const chatSubscription = supabase.channel('public:global_chats')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'global_chats' }, (payload) => {
         setGlobalChatMessages((prev) => [...prev, payload.new]);
@@ -130,10 +128,25 @@ export default function Home() {
     return () => { supabase.removeChannel(chatSubscription); };
   }, []);
 
-  const loadUserProfile = async (userId: string) => {
-    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    if (data) {
-      setUserProfile({ id: data.id, name: data.character_name || '모험가', avatar: data.avatar || '🍁', user_code: data.user_code });
+  // 🔥 무적의 유저 프로필 로드 함수 (절대 null 방지)
+  const loadUserProfile = async (user: any) => {
+    try {
+      const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+      if (data) {
+        setUserProfile({ id: data.id, name: data.character_name || '모험가', avatar: data.avatar || '🍁', user_code: data.user_code });
+      } else {
+        // DB에 프로필이 없으면 즉시 임시 프로필 생성 및 화면 적용 (버튼 먹통 방지)
+        const fallbackCode = `#${Math.floor(1000 + Math.random() * 9000)}`;
+        const fallbackName = user.user_metadata?.character_name || user.user_metadata?.full_name || '모험가';
+        setUserProfile({ id: user.id, name: fallbackName, avatar: '🍁', user_code: fallbackCode });
+
+        // 뒷단에서 몰래 DB에 채워넣기
+        supabase.from('profiles').insert([{
+          id: user.id, character_name: fallbackName, avatar: '🍁', user_code: fallbackCode
+        }]).then();
+      }
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -143,7 +156,7 @@ export default function Home() {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         setIsLoggedIn(true);
-        await loadUserProfile(user.id);
+        await loadUserProfile(user);
         fetchUserLikes(user.id);
       }
     };
@@ -152,7 +165,7 @@ export default function Home() {
     const { data: authListener } = supabase.auth.onAuthStateChange(async (_, session) => {
       if (session?.user) {
         setIsLoggedIn(true);
-        setTimeout(() => loadUserProfile(session.user.id), 500);
+        setTimeout(() => loadUserProfile(session.user), 300);
         fetchUserLikes(session.user.id);
       } else {
         setIsLoggedIn(false); setUserProfile(null); setLikedPosts(new Set()); setLikedComments(new Set());
@@ -165,22 +178,30 @@ export default function Home() {
     await supabase.auth.signInWithOAuth({ provider: 'discord', options: { redirectTo: `${window.location.origin}` } });
   };
 
+  // 🔥 마이페이지 열기 로직
   const openMyStore = () => {
-    if (!userProfile) return;
-    setSelectedUserStore({ id: userProfile.id, name: userProfile.name, avatar: userProfile.avatar, user_code: userProfile.user_code });
+    if (!userProfile) {
+      alert("프로필 정보를 불러오는 중입니다. 잠시 후 다시 시도해주세요.");
+      return;
+    }
+    setSelectedUserStore({
+      id: userProfile.id,
+      name: userProfile.name,
+      avatar: userProfile.avatar,
+      user_code: userProfile.user_code
+    });
     setStoreCategoryFilter('ALL');
-    setIsUserStoreModalOpen(true);
-    setIsDropdownOpen(false);
+    setIsDropdownOpen(false); // 메뉴 닫기
+    setIsUserStoreModalOpen(true); // 마이페이지(상점) 모달 열기
   };
 
-  // 🔥 공용 채팅 전송
   const handleSendGlobalChat = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!globalChatInput.trim()) return;
 
     const senderName = isLoggedIn ? `${userProfile?.name} ${userProfile?.user_code || ''}` : `익명_${anonymousId}`;
     const msg = globalChatInput;
-    setGlobalChatInput('');
+    setGlobalChatInput(''); // 보내자마자 인풋 비우기
 
     await supabase.from('global_chats').insert([{
       sender_name: senderName,
@@ -352,10 +373,12 @@ export default function Home() {
             {isLoggedIn ? (
               <div className="relative">
                 {isDropdownOpen && <div className="fixed inset-0 z-40" onClick={() => setIsDropdownOpen(false)}></div>}
+
+                {/* 닉네임 버튼을 클릭하면 isDropdownOpen 상태가 변경됨 */}
                 <div onClick={() => setIsDropdownOpen(!isDropdownOpen)} className={`relative z-50 flex items-center gap-2.5 px-3.5 py-2 rounded-2xl border cursor-pointer hover:border-amber-500/50 transition-colors ${isDarkMode ? 'bg-[#2a2f3d] border-slate-600' : 'bg-slate-200 border-slate-300'}`}>
                   <div className="w-7 h-7 overflow-hidden rounded-xl bg-amber-500/20 flex items-center justify-center shrink-0 text-sm">{renderAvatar(userProfile?.avatar || '🍁')}</div>
                   <span className="font-bold text-sm hidden md:block">
-                    {userProfile?.name} <span className="text-[10px] text-amber-400/80">{userProfile?.user_code}</span>
+                    {userProfile?.name || '로딩중...'} <span className="text-[10px] text-amber-400/80">{userProfile?.user_code}</span>
                   </span>
                   <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isDropdownOpen ? 'rotate-180 text-amber-400' : ''}`} />
                 </div>
@@ -363,6 +386,7 @@ export default function Home() {
                 {isDropdownOpen && (
                   <div className={`absolute right-0 mt-2 w-48 rounded-2xl shadow-xl z-50 overflow-hidden border animate-in fade-in slide-in-from-top-2 ${isDarkMode ? 'bg-[#222631] border-slate-700' : 'bg-white border-slate-200'}`}>
                     <div className="p-2 space-y-1">
+                      {/* 🔥 버튼 클릭 시 모달이 뜰 수 있도록 수정된 부분 */}
                       <button onClick={openMyStore} className={`w-full text-left px-4 py-2.5 text-sm font-bold rounded-xl transition-colors ${isDarkMode ? 'hover:bg-amber-500 hover:text-slate-950 text-slate-200' : 'hover:bg-amber-500 hover:text-white text-slate-700'}`}>
                         🏪 마이페이지
                       </button>
@@ -532,7 +556,6 @@ export default function Home() {
         )}
       </main>
 
-      {/* 🔥 플로팅 글로벌 단체 채팅방 */}
       <div className="fixed bottom-6 right-6 z-50">
         {!isGlobalChatOpen ? (
           <button
@@ -593,18 +616,13 @@ export default function Home() {
         )}
       </div>
 
-      {/* 모달 영역 */}
       {isProfileModalOpen && userProfile && <ProfileModal userProfile={userProfile} isDarkMode={isDarkMode} onClose={() => setIsProfileModalOpen(false)} onSuccess={(updated) => setUserProfile((prev: any) => ({ ...prev, ...updated }))} />}
       {isUserStoreModalOpen && selectedUserStore && <UserStoreModal selectedUserStore={selectedUserStore} userTradePosts={selectedUserTradePosts} categories={TRADE_CATEGORIES} storeCategoryFilter={storeCategoryFilter} setStoreCategoryFilter={setStoreCategoryFilter} isDarkMode={isDarkMode} onClose={() => setIsUserStoreModalOpen(false)} onSelectPost={(p) => { setSelectedPostDetail(p); setIsDetailModalOpen(true); }} onOpenChat={openKakaoChat} renderPriceTag={renderPriceTag} renderAvatar={renderAvatar} />}
       {isChatModalOpen && activeChatTarget && <ChatModal activeChatTarget={activeChatTarget} chatMessages={chatMessages} inputMessage={inputMessage} setInputMessage={setInputMessage} chatScrollRef={chatScrollRef} onClose={() => setIsChatModalOpen(false)} onSendMessage={handleSendChatMessage} />}
       {isDetailModalOpen && selectedPostDetail && <TradeDetailModal selectedPostDetail={selectedPostDetail} userProfile={userProfile} categories={TRADE_CATEGORIES} isDarkMode={isDarkMode} onClose={() => setIsDetailModalOpen(false)} onOpenStore={openUserStore} onOpenChat={openKakaoChat} onToggleStatus={handleTogglePostStatus} onDeletePost={handleDeletePost} renderPriceTag={renderPriceTag} />}
 
       {isWriteModalOpen && (
-        <WriteModal
-          mainTab={mainTab} setMainTab={setMainTab} newTradePost={newTradePost} setNewTradePost={setNewTradePost} newBoardPost={newBoardPost} setNewBoardPost={setNewBoardPost}
-          isDarkMode={isDarkMode} isUploadingImage={isUploadingImage} onClose={() => setIsWriteModalOpen(false)}
-          onCreateTradePost={handleCreateTradePost} onCreateBoardPost={handleCreateBoardPost} onBoardImageUpload={handleBoardImageUpload}
-        />
+        <WriteModal mainTab={mainTab} setMainTab={setMainTab} newTradePost={newTradePost} setNewTradePost={setNewTradePost} newBoardPost={newBoardPost} setNewBoardPost={setNewBoardPost} isDarkMode={isDarkMode} isUploadingImage={isUploadingImage} onClose={() => setIsWriteModalOpen(false)} onCreateTradePost={handleCreateTradePost} onCreateBoardPost={handleCreateBoardPost} onBoardImageUpload={handleBoardImageUpload} />
       )}
 
       {isLoginModalOpen && (
