@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import {
   Sparkles, ShoppingBag, Users, Swords, LogIn, Search, Plus, MessageSquare, X,
-  Moon, Sun, MapPin, ThumbsUp, Coins, CreditCard, Flame, Settings, MessageCircle, Store
+  Moon, Sun, MapPin, ThumbsUp, Coins, CreditCard, Flame, Settings, MessageCircle, Store, ChevronDown
 } from 'lucide-react';
 
 import ProfileModal from '@/components/ProfileModal';
@@ -43,6 +43,9 @@ export default function Home() {
   const [newCommentInput, setNewCommentInput] = useState('');
   const [activeCommentPostId, setActiveCommentPostId] = useState<string | null>(null);
   const [commentSortType, setCommentSortType] = useState<'latest' | 'likes'>('latest');
+
+  // 🔥 드롭다운 메뉴 상태 추가
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isWriteModalOpen, setIsWriteModalOpen] = useState(false);
@@ -92,7 +95,6 @@ export default function Home() {
     if (comments) setCommentsMap(prev => ({ ...prev, [postId]: comments }));
   };
 
-  // 🔥 핵심 변경점: Auth 뿐만 아니라 profiles 테이블에서 고유 정보(user_code)를 가져옵니다.
   const loadUserProfile = async (userId: string) => {
     const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
     if (data) {
@@ -115,7 +117,6 @@ export default function Home() {
     const { data: authListener } = supabase.auth.onAuthStateChange(async (_, session) => {
       if (session?.user) {
         setIsLoggedIn(true);
-        // 첫 로그인(가입) 시 트리거가 돌 시간을 약간 줌 (0.5초 대기)
         setTimeout(() => loadUserProfile(session.user.id), 500);
         fetchUserLikes(session.user.id);
       } else {
@@ -129,41 +130,34 @@ export default function Home() {
     await supabase.auth.signInWithOAuth({ provider: 'discord', options: { redirectTo: `${window.location.origin}` } });
   };
 
+  // 🔥 내 상점(마이페이지) 열기 함수
+  const openMyStore = () => {
+    if (!userProfile) return;
+    setSelectedUserStore({ id: userProfile.id, name: userProfile.name, avatar: userProfile.avatar, user_code: userProfile.user_code });
+    setStoreCategoryFilter('ALL');
+    setIsUserStoreModalOpen(true);
+    setIsDropdownOpen(false); // 드롭다운 닫기
+  };
+
   const handleBoardImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) return alert('이미지 용량은 2MB 이하로 업로드해주세요.');
-
+    if (file.size > 2 * 1024 * 1024) return alert('용량은 2MB 이하로 업로드해주세요.');
     setIsUploadingImage(true);
     try {
       const filePath = `board/${Date.now()}_${file.name}`;
       const { error } = await supabase.storage.from('profiles').upload(filePath, file);
       if (error) throw error;
-
       const { data } = supabase.storage.from('profiles').getPublicUrl(filePath);
       setNewBoardPost(prev => ({ ...prev, image_url: data.publicUrl }));
-    } catch (err: any) {
-      alert('사진 업로드 실패: ' + err.message);
-    } finally {
-      setIsUploadingImage(false);
-    }
+    } catch (err: any) { alert('사진 업로드 실패: ' + err.message); } finally { setIsUploadingImage(false); }
   };
 
   const handleCreateBoardPost = async (e: React.FormEvent) => {
     e.preventDefault();
     const fullAuthorName = `${userProfile?.name} ${userProfile?.user_code || ''}`;
-    const { error } = await supabase.from('board_posts').insert([{
-      title: newBoardPost.title,
-      content: newBoardPost.content,
-      image_url: newBoardPost.image_url,
-      author_name: fullAuthorName,
-      likes: 0,
-      user_id: userProfile?.id
-    }]);
-    if (!error) {
-      alert('게시글이 작성되었습니다!'); setIsWriteModalOpen(false);
-      setNewBoardPost({ title: '', content: '', image_url: '' }); fetchAllData();
-    } else { alert('❌ 자유게시판 등록 실패: ' + error.message); }
+    const { error } = await supabase.from('board_posts').insert([{ title: newBoardPost.title, content: newBoardPost.content, image_url: newBoardPost.image_url, author_name: fullAuthorName, likes: 0, user_id: userProfile?.id }]);
+    if (!error) { alert('게시글이 작성되었습니다!'); setIsWriteModalOpen(false); setNewBoardPost({ title: '', content: '', image_url: '' }); fetchAllData(); } else { alert('❌ 실패: ' + error.message); }
   };
 
   const handleLikeBoardPost = async (postId: string, currentLikes: number) => {
@@ -217,14 +211,7 @@ export default function Home() {
   const handleCreateTradePost = async (e: React.FormEvent) => {
     e.preventDefault();
     const fullAuthorName = `${userProfile?.name} ${userProfile?.user_code || ''}`;
-    const postPayload = {
-      category: newTradePost.category, title: newTradePost.title, item_name: newTradePost.itemName,
-      item_icon: '📦', quantity: newTradePost.quantity, equip_stats: newTradePost.equipStats,
-      character_name: fullAuthorName, location_or_boss: newTradePost.location_or_boss,
-      currency_type: newTradePost.currencyType, price_meso: newTradePost.priceMeso, price_cash: newTradePost.priceCash,
-      content: newTradePost.content, is_safe_trade: true, status: 'RECRUITING', user_id: userProfile?.id, user_avatar: userProfile?.avatar,
-      user_code: userProfile?.user_code
-    };
+    const postPayload = { category: newTradePost.category, title: newTradePost.title, item_name: newTradePost.itemName, item_icon: '📦', quantity: newTradePost.quantity, equip_stats: newTradePost.equipStats, character_name: fullAuthorName, location_or_boss: newTradePost.location_or_boss, currency_type: newTradePost.currencyType, price_meso: newTradePost.priceMeso, price_cash: newTradePost.priceCash, content: newTradePost.content, is_safe_trade: true, status: 'RECRUITING', user_id: userProfile?.id, user_avatar: userProfile?.avatar, user_code: userProfile?.user_code };
     const { error } = await supabase.from('trade_posts').insert([postPayload]);
     if (!error) { alert('등록되었습니다!'); setIsWriteModalOpen(false); fetchAllData(); } else { alert('❌ 실패: ' + error.message); }
   };
@@ -256,7 +243,6 @@ export default function Home() {
     const timeStr = `${now.getHours() > 12 ? '오후' : '오전'} ${now.getHours() % 12 || 12}:${now.getMinutes() < 10 ? '0' : ''}${now.getMinutes()}`;
     const msgText = inputMessage; setInputMessage('');
     setChatMessages(prev => [...prev, { sender: 'me', text: msgText, time: timeStr }]);
-
     const fullAuthorName = `${userProfile?.name} ${userProfile?.user_code || ''}`;
     await supabase.from('chat_messages').insert([{ trade_post_id: activeChatTarget.id, sender_name: fullAuthorName, message: msgText, user_id: userProfile?.id }]);
   };
@@ -312,13 +298,38 @@ export default function Home() {
             <button onClick={() => { if (!isLoggedIn) { alert('로그인 후 이용하세요'); setIsLoginModalOpen(true); return; } setIsWriteModalOpen(true); }} className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold px-4 py-2.5 rounded-2xl text-sm">
               <Plus className="w-5 h-5" /> 글쓰기
             </button>
+
+            {/* 🔥 프로필 드롭다운 영역 */}
             {isLoggedIn ? (
-              <div onClick={() => setIsProfileModalOpen(true)} className={`flex items-center gap-2.5 px-3.5 py-2 rounded-2xl border cursor-pointer ${isDarkMode ? 'bg-[#2a2f3d] border-slate-600' : 'bg-slate-200 border-slate-300'}`}>
-                <div className="w-7 h-7 overflow-hidden rounded-xl bg-amber-500/20 flex items-center justify-center shrink-0 text-sm">{renderAvatar(userProfile?.avatar || '🍁')}</div>
-                <span className="font-bold text-sm hidden md:block">
-                  {userProfile?.name} <span className="text-[10px] text-amber-400/80">{userProfile?.user_code}</span>
-                </span>
-                <Settings className="w-4 h-4 text-slate-400 hover:text-amber-400" />
+              <div className="relative">
+                {/* 바깥 영역 클릭 시 닫히도록 투명 배경 추가 */}
+                {isDropdownOpen && <div className="fixed inset-0 z-40" onClick={() => setIsDropdownOpen(false)}></div>}
+
+                <div onClick={() => setIsDropdownOpen(!isDropdownOpen)} className={`relative z-50 flex items-center gap-2.5 px-3.5 py-2 rounded-2xl border cursor-pointer hover:border-amber-500/50 transition-colors ${isDarkMode ? 'bg-[#2a2f3d] border-slate-600' : 'bg-slate-200 border-slate-300'}`}>
+                  <div className="w-7 h-7 overflow-hidden rounded-xl bg-amber-500/20 flex items-center justify-center shrink-0 text-sm">{renderAvatar(userProfile?.avatar || '🍁')}</div>
+                  <span className="font-bold text-sm hidden md:block">
+                    {userProfile?.name} <span className="text-[10px] text-amber-400/80">{userProfile?.user_code}</span>
+                  </span>
+                  <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isDropdownOpen ? 'rotate-180 text-amber-400' : ''}`} />
+                </div>
+
+                {/* 드롭다운 메뉴 내용 */}
+                {isDropdownOpen && (
+                  <div className={`absolute right-0 mt-2 w-48 rounded-2xl shadow-xl z-50 overflow-hidden border animate-in fade-in slide-in-from-top-2 ${isDarkMode ? 'bg-[#222631] border-slate-700' : 'bg-white border-slate-200'}`}>
+                    <div className="p-2 space-y-1">
+                      <button onClick={openMyStore} className={`w-full text-left px-4 py-2.5 text-sm font-bold rounded-xl transition-colors ${isDarkMode ? 'hover:bg-amber-500 hover:text-slate-950 text-slate-200' : 'hover:bg-amber-500 hover:text-white text-slate-700'}`}>
+                        🏪 내 상점 (마이페이지)
+                      </button>
+                      <button onClick={() => { setIsProfileModalOpen(true); setIsDropdownOpen(false); }} className={`w-full text-left px-4 py-2.5 text-sm font-bold rounded-xl transition-colors ${isDarkMode ? 'hover:bg-amber-500 hover:text-slate-950 text-slate-200' : 'hover:bg-amber-500 hover:text-white text-slate-700'}`}>
+                        ⚙️ 회원정보 변경
+                      </button>
+                      <div className="h-px bg-slate-700/50 my-1"></div>
+                      <button onClick={async () => { await supabase.auth.signOut(); window.location.reload(); }} className={`w-full text-left px-4 py-2.5 text-sm font-bold rounded-xl transition-colors text-rose-400 hover:bg-rose-500/10`}>
+                        🚪 로그아웃
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <button onClick={() => setIsLoginModalOpen(true)} className="flex items-center gap-2 border font-bold text-sm px-4 py-2.5 rounded-2xl bg-white text-slate-800"><LogIn className="w-5 h-5 text-amber-500" /> 로그인</button>

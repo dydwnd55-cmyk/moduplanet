@@ -63,11 +63,6 @@ export default function ProfileModal({ userProfile, isDarkMode, onClose, onSucce
         }
     };
 
-    const handleLogout = async () => {
-        await supabase.auth.signOut();
-        window.location.reload();
-    };
-
     const renderAvatar = (src: string) => {
         if (src && (src.startsWith('http') || src.startsWith('data:image'))) {
             return <img src={src} alt="Avatar" className="w-full h-full object-cover" />;
@@ -120,12 +115,9 @@ export default function ProfileModal({ userProfile, isDarkMode, onClose, onSucce
                     </div>
                 </div>
 
-                <div className="space-y-2.5 pt-2">
+                <div className="pt-2">
                     <button onClick={handleSaveProfile} disabled={isUploading} className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-black py-3.5 rounded-2xl text-sm transition-all flex items-center justify-center gap-2 shadow-md">
                         <Check className="w-5 h-5" /> 프로필 저장 완료
-                    </button>
-                    <button onClick={handleLogout} className="w-full bg-slate-800 hover:bg-slate-700 text-rose-400 font-bold py-3.5 rounded-2xl text-sm transition-colors border border-slate-700">
-                        로그아웃
                     </button>
                 </div>
             </div>
