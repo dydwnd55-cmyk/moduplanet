@@ -22,14 +22,6 @@ const TRADE_CATEGORIES = [
   { id: 'SPOT', label: '사냥터자리', icon: MapPin, badgeColor: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30' },
 ];
 
-const MOCK_ITEM_DB = [
-  { id: 'i1', name: '노가다 목장갑 (공8 노목)', category: '장비', icon: '🥊', defaultStats: '공격력 +8 / 업횟 0회' },
-  { id: 'i2', name: '자쿰의 투구', category: '장비', icon: '👑', defaultStats: 'STR +15, DEX +15, INT +15, LUK +15' },
-  { id: 'i3', name: '혼돈의 주문서 60%', category: '주문서', icon: '📜', defaultStats: '장비 옵션 무작위 재설정' },
-  { id: 'i4', name: '장갑 공격력 주문서 60%', category: '주문서', icon: '📜', defaultStats: '공격력 +1, 성공률 60%' },
-  { id: 'i5', name: '뇌전 수리검', category: '소비', icon: '⚡', defaultStats: '공격력 +21' },
-];
-
 export default function Home() {
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [mainTab, setMainTab] = useState<'TRADE' | 'BOARD'>('TRADE');
@@ -42,19 +34,16 @@ export default function Home() {
   const [boardSortBy, setBoardSortBy] = useState<'likes' | 'latest'>('likes');
 
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [userProfile, setUserProfile] = useState<{ id: string; name: string; avatar: string } | null>(null);
+  const [userProfile, setUserProfile] = useState<{ id: string; name: string; avatar: string; user_code?: string } | null>(null);
 
-  // 좋아요 추적 상태 (게시글 & 댓글)
   const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set());
   const [likedComments, setLikedComments] = useState<Set<string>>(new Set());
 
-  // 댓글 데이터 및 상태
   const [commentsMap, setCommentsMap] = useState<Record<string, any[]>>({});
   const [newCommentInput, setNewCommentInput] = useState('');
   const [activeCommentPostId, setActiveCommentPostId] = useState<string | null>(null);
   const [commentSortType, setCommentSortType] = useState<'latest' | 'likes'>('latest');
 
-  // 모달 제어
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isWriteModalOpen, setIsWriteModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -62,7 +51,7 @@ export default function Home() {
   const [selectedPostDetail, setSelectedPostDetail] = useState<any>(null);
 
   const [isUserStoreModalOpen, setIsUserStoreModalOpen] = useState(false);
-  const [selectedUserStore, setSelectedUserStore] = useState<{ id?: string; name: string; avatar: string } | null>(null);
+  const [selectedUserStore, setSelectedUserStore] = useState<{ id?: string; name: string; avatar: string; user_code?: string } | null>(null);
   const [storeCategoryFilter, setStoreCategoryFilter] = useState('ALL');
 
   const [isChatModalOpen, setIsChatModalOpen] = useState(false);
@@ -71,21 +60,14 @@ export default function Home() {
   const [inputMessage, setInputMessage] = useState('');
   const chatScrollRef = useRef<HTMLDivElement>(null);
 
-  const [itemSearchQuery, setItemSearchQuery] = useState('');
-  const [filteredItemDB, setFilteredItemDB] = useState<typeof MOCK_ITEM_DB>([]);
-
-  // 폼 입력 상태
   const [newTradePost, setNewTradePost] = useState({
-    category: 'SELL', title: '', itemName: '', itemIcon: '📦', quantity: '1개',
-    equipStats: '', character_name: '', location_or_boss: '', currencyType: 'MESO',
+    category: 'SELL', title: '', itemName: '', quantity: '1개',
+    equipStats: '', location_or_boss: '', currencyType: 'MESO',
     priceMeso: '', priceCash: '', content: '', isSafeTrade: true
   });
   const [newBoardPost, setNewBoardPost] = useState({ title: '', content: '', image_url: '' });
   const [isUploadingImage, setIsUploadingImage] = useState(false);
 
-  // -------------------------------------------------------------
-  // 데이터 패칭 로직
-  // -------------------------------------------------------------
   const fetchAllData = async () => {
     setIsLoading(true);
     try {
@@ -110,26 +92,31 @@ export default function Home() {
     if (comments) setCommentsMap(prev => ({ ...prev, [postId]: comments }));
   };
 
+  // 🔥 핵심 변경점: Auth 뿐만 아니라 profiles 테이블에서 고유 정보(user_code)를 가져옵니다.
+  const loadUserProfile = async (userId: string) => {
+    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
+    if (data) {
+      setUserProfile({ id: data.id, name: data.character_name || '모험가', avatar: data.avatar || '🍁', user_code: data.user_code });
+    }
+  };
+
   useEffect(() => {
     fetchAllData();
-
     const checkUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         setIsLoggedIn(true);
-        const meta = user.user_metadata || {};
-        setUserProfile({ id: user.id, name: meta.character_name || meta.name || '모험가', avatar: meta.avatar || '🍁' });
-        setNewTradePost(prev => ({ ...prev, character_name: meta.character_name || '모험가' }));
+        await loadUserProfile(user.id);
         fetchUserLikes(user.id);
       }
     };
     checkUser();
 
-    const { data: authListener } = supabase.auth.onAuthStateChange((_, session) => {
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (_, session) => {
       if (session?.user) {
         setIsLoggedIn(true);
-        const meta = session.user.user_metadata || {};
-        setUserProfile({ id: session.user.id, name: meta.character_name || meta.name || '모험가', avatar: meta.avatar || '🍁' });
+        // 첫 로그인(가입) 시 트리거가 돌 시간을 약간 줌 (0.5초 대기)
+        setTimeout(() => loadUserProfile(session.user.id), 500);
         fetchUserLikes(session.user.id);
       } else {
         setIsLoggedIn(false); setUserProfile(null); setLikedPosts(new Set()); setLikedComments(new Set());
@@ -142,9 +129,6 @@ export default function Home() {
     await supabase.auth.signInWithOAuth({ provider: 'discord', options: { redirectTo: `${window.location.origin}` } });
   };
 
-  // -------------------------------------------------------------
-  // 게시판 액션 (게시물, 댓글 추천 및 이미지 업로드)
-  // -------------------------------------------------------------
   const handleBoardImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -167,25 +151,23 @@ export default function Home() {
 
   const handleCreateBoardPost = async (e: React.FormEvent) => {
     e.preventDefault();
+    const fullAuthorName = `${userProfile?.name} ${userProfile?.user_code || ''}`;
     const { error } = await supabase.from('board_posts').insert([{
       title: newBoardPost.title,
       content: newBoardPost.content,
       image_url: newBoardPost.image_url,
-      author_name: userProfile?.name || '익명유저',
+      author_name: fullAuthorName,
       likes: 0,
       user_id: userProfile?.id
     }]);
     if (!error) {
       alert('게시글이 작성되었습니다!'); setIsWriteModalOpen(false);
       setNewBoardPost({ title: '', content: '', image_url: '' }); fetchAllData();
-    } else {
-      alert('❌ 자유게시판 등록 실패: ' + error.message);
-    }
+    } else { alert('❌ 자유게시판 등록 실패: ' + error.message); }
   };
 
   const handleLikeBoardPost = async (postId: string, currentLikes: number) => {
     if (!isLoggedIn || !userProfile) { alert('로그인 후 이용 가능합니다.'); setIsLoginModalOpen(true); return; }
-
     if (likedPosts.has(postId)) {
       await supabase.from('board_likes').delete().match({ post_id: postId, user_id: userProfile.id });
       await supabase.from('board_posts').update({ likes: currentLikes - 1 }).eq('id', postId);
@@ -203,7 +185,6 @@ export default function Home() {
 
   const handleLikeComment = async (commentId: string, currentLikes: number, postId: string) => {
     if (!isLoggedIn || !userProfile) { alert('로그인 후 이용 가능합니다.'); setIsLoginModalOpen(true); return; }
-
     if (likedComments.has(commentId)) {
       await supabase.from('comment_likes').delete().match({ comment_id: commentId, user_id: userProfile.id });
       await supabase.from('board_comments').update({ likes: currentLikes - 1 }).eq('id', commentId);
@@ -222,8 +203,8 @@ export default function Home() {
   const handleAddComment = async (postId: string) => {
     if (!isLoggedIn || !userProfile) { alert('로그인해주세요.'); setIsLoginModalOpen(true); return; }
     if (!newCommentInput.trim()) return;
-
-    const { error } = await supabase.from('board_comments').insert([{ post_id: postId, user_id: userProfile.id, author_name: userProfile.name, content: newCommentInput }]);
+    const fullAuthorName = `${userProfile?.name} ${userProfile?.user_code || ''}`;
+    const { error } = await supabase.from('board_comments').insert([{ post_id: postId, user_id: userProfile.id, author_name: fullAuthorName, content: newCommentInput }]);
     if (!error) { setNewCommentInput(''); fetchCommentsForPost(postId); } else { alert('댓글 실패: ' + error.message); }
   };
 
@@ -231,14 +212,19 @@ export default function Home() {
     if (activeCommentPostId === postId) { setActiveCommentPostId(null); } else { setActiveCommentPostId(postId); fetchCommentsForPost(postId); }
   };
 
-  // -------------------------------------------------------------
-  // 거래 센터 액션 
-  // -------------------------------------------------------------
-  const openUserStore = (post: any) => { setSelectedUserStore({ id: post.user_id, name: post.character_name || '모험가', avatar: post.user_avatar || '🍁' }); setStoreCategoryFilter('ALL'); setIsUserStoreModalOpen(true); };
+  const openUserStore = (post: any) => { setSelectedUserStore({ id: post.user_id, name: post.character_name || '모험가', avatar: post.user_avatar || '🍁', user_code: post.user_code }); setStoreCategoryFilter('ALL'); setIsUserStoreModalOpen(true); };
 
   const handleCreateTradePost = async (e: React.FormEvent) => {
     e.preventDefault();
-    const postPayload = { category: newTradePost.category, title: newTradePost.title, item_name: newTradePost.itemName, item_icon: newTradePost.itemIcon || '📦', quantity: newTradePost.quantity, equip_stats: newTradePost.equipStats, character_name: userProfile?.name || newTradePost.character_name, location_or_boss: newTradePost.location_or_boss, currency_type: newTradePost.currencyType, price_meso: newTradePost.priceMeso, price_cash: newTradePost.priceCash, content: newTradePost.content, is_safe_trade: true, status: 'RECRUITING', user_id: userProfile?.id, user_avatar: userProfile?.avatar };
+    const fullAuthorName = `${userProfile?.name} ${userProfile?.user_code || ''}`;
+    const postPayload = {
+      category: newTradePost.category, title: newTradePost.title, item_name: newTradePost.itemName,
+      item_icon: '📦', quantity: newTradePost.quantity, equip_stats: newTradePost.equipStats,
+      character_name: fullAuthorName, location_or_boss: newTradePost.location_or_boss,
+      currency_type: newTradePost.currencyType, price_meso: newTradePost.priceMeso, price_cash: newTradePost.priceCash,
+      content: newTradePost.content, is_safe_trade: true, status: 'RECRUITING', user_id: userProfile?.id, user_avatar: userProfile?.avatar,
+      user_code: userProfile?.user_code
+    };
     const { error } = await supabase.from('trade_posts').insert([postPayload]);
     if (!error) { alert('등록되었습니다!'); setIsWriteModalOpen(false); fetchAllData(); } else { alert('❌ 실패: ' + error.message); }
   };
@@ -270,12 +256,11 @@ export default function Home() {
     const timeStr = `${now.getHours() > 12 ? '오후' : '오전'} ${now.getHours() % 12 || 12}:${now.getMinutes() < 10 ? '0' : ''}${now.getMinutes()}`;
     const msgText = inputMessage; setInputMessage('');
     setChatMessages(prev => [...prev, { sender: 'me', text: msgText, time: timeStr }]);
-    await supabase.from('chat_messages').insert([{ trade_post_id: activeChatTarget.id, sender_name: userProfile?.name || '익명', message: msgText, user_id: userProfile?.id }]);
+
+    const fullAuthorName = `${userProfile?.name} ${userProfile?.user_code || ''}`;
+    await supabase.from('chat_messages').insert([{ trade_post_id: activeChatTarget.id, sender_name: fullAuthorName, message: msgText, user_id: userProfile?.id }]);
   };
 
-  // -------------------------------------------------------------
-  // 필터 및 렌더링 헬퍼
-  // -------------------------------------------------------------
   const filteredTradePosts = tradePosts.filter(post => {
     const matchesCategory = activeCategory === 'ALL' || post.category === activeCategory;
     const matchesSearch = (post.title || '').includes(searchTerm) || (post.item_name || '').includes(searchTerm) || (post.character_name || '').includes(searchTerm);
@@ -330,7 +315,9 @@ export default function Home() {
             {isLoggedIn ? (
               <div onClick={() => setIsProfileModalOpen(true)} className={`flex items-center gap-2.5 px-3.5 py-2 rounded-2xl border cursor-pointer ${isDarkMode ? 'bg-[#2a2f3d] border-slate-600' : 'bg-slate-200 border-slate-300'}`}>
                 <div className="w-7 h-7 overflow-hidden rounded-xl bg-amber-500/20 flex items-center justify-center shrink-0 text-sm">{renderAvatar(userProfile?.avatar || '🍁')}</div>
-                <span className="font-bold text-sm hidden md:block">{userProfile?.name}</span>
+                <span className="font-bold text-sm hidden md:block">
+                  {userProfile?.name} <span className="text-[10px] text-amber-400/80">{userProfile?.user_code}</span>
+                </span>
                 <Settings className="w-4 h-4 text-slate-400 hover:text-amber-400" />
               </div>
             ) : (
@@ -370,7 +357,7 @@ export default function Home() {
                     </div>
                     <h3 className="font-bold text-base md:text-lg text-slate-100">{post.title}</h3>
                     <div className="flex items-center gap-4 text-xs text-slate-400 flex-wrap">
-                      <button onClick={(e) => { e.stopPropagation(); openUserStore(post); }} className="flex items-center gap-1.5 bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2.5 py-1 rounded-xl">
+                      <button onClick={(e) => { e.stopPropagation(); openUserStore(post); }} className="flex items-center gap-1.5 bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2.5 py-1 rounded-xl hover:bg-amber-500/20 transition">
                         <div className="w-5 h-5 overflow-hidden rounded-lg">{renderAvatar(post.user_avatar || '🍁')}</div>
                         <strong className="text-slate-200">{post.character_name}</strong>
                         <Store className="w-3.5 h-3.5" />
@@ -386,7 +373,6 @@ export default function Home() {
           </>
         )}
 
-        {/* TAB 2: 자유게시판 */}
         {mainTab === 'BOARD' && (
           <div className="space-y-5">
             <div className={`flex justify-between items-center p-4 rounded-2xl border ${isDarkMode ? 'bg-[#222631] border-slate-700' : 'bg-white border-slate-200'}`}>
@@ -403,10 +389,9 @@ export default function Home() {
                 const postComments = commentsMap[post.id] || [];
                 const isCommentOpen = activeCommentPostId === post.id;
 
-                // 댓글 정렬 로직 (최신순 vs 추천순)
                 const sortedComments = [...postComments].sort((a, b) => {
                   if (commentSortType === 'likes') return (b.likes || 0) - (a.likes || 0);
-                  return new Date(b.created_at).getTime() - new Date(a.created_at).getTime(); // 최신순
+                  return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
                 });
 
                 return (
@@ -418,7 +403,6 @@ export default function Home() {
                           <h3 className="font-bold text-base md:text-lg text-slate-100">{post.title}</h3>
                         </div>
 
-                        {/* 이미지 렌더링 영역 */}
                         {post.image_url && (
                           <div className="py-2">
                             <img src={post.image_url} alt="첨부됨" className="max-h-96 w-auto rounded-xl object-contain border border-slate-700/50" />
@@ -464,10 +448,7 @@ export default function Home() {
                                         {new Date(c.created_at).toLocaleString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
                                       </span>
                                     </div>
-                                    <button
-                                      onClick={() => handleLikeComment(c.id, c.likes || 0, post.id)}
-                                      className={`flex items-center gap-1.5 text-[10px] md:text-xs font-bold px-2 py-1 rounded-lg border transition-all ${isCommentLiked ? 'bg-amber-500/20 text-amber-400 border-amber-500/40' : 'bg-slate-800 text-slate-400 border-slate-700 hover:border-amber-500/40'}`}
-                                    >
+                                    <button onClick={() => handleLikeComment(c.id, c.likes || 0, post.id)} className={`flex items-center gap-1.5 text-[10px] md:text-xs font-bold px-2 py-1 rounded-lg border transition-all ${isCommentLiked ? 'bg-amber-500/20 text-amber-400 border-amber-500/40' : 'bg-slate-800 text-slate-400 border-slate-700 hover:border-amber-500/40'}`}>
                                       <ThumbsUp className={`w-3 h-3 ${isCommentLiked ? 'fill-amber-400' : ''}`} /> {c.likes || 0}
                                     </button>
                                   </div>
@@ -503,9 +484,7 @@ export default function Home() {
       {isWriteModalOpen && (
         <WriteModal
           mainTab={mainTab} setMainTab={setMainTab} newTradePost={newTradePost} setNewTradePost={setNewTradePost} newBoardPost={newBoardPost} setNewBoardPost={setNewBoardPost}
-          itemSearchQuery={itemSearchQuery} filteredItemDB={filteredItemDB} isDarkMode={isDarkMode} isUploadingImage={isUploadingImage} onClose={() => setIsWriteModalOpen(false)}
-          onItemSearchChange={(q) => { setItemSearchQuery(q); setFilteredItemDB(q.trim() === '' ? [] : MOCK_ITEM_DB.filter((i) => i.name.toLowerCase().includes(q.toLowerCase()))); }}
-          onSelectItemFromDB={(item) => { setNewTradePost((prev: any) => ({ ...prev, itemName: item.name, itemIcon: item.icon, equipStats: item.defaultStats, title: prev.title || `[${item.name}] 거래합니다.` })); setItemSearchQuery(item.name); setFilteredItemDB([]); }}
+          isDarkMode={isDarkMode} isUploadingImage={isUploadingImage} onClose={() => setIsWriteModalOpen(false)}
           onCreateTradePost={handleCreateTradePost} onCreateBoardPost={handleCreateBoardPost} onBoardImageUpload={handleBoardImageUpload}
         />
       )}
